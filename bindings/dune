@@ -1,0 +1,3 @@
+(library (name zstd_bindings) (public_name zstandard.bindings)
+ (libraries ctypes ctypes.stubs) (modules zstd_bindings)
+ (preprocess (pps ppx_jane)))

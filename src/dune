@@ -1,0 +1,8 @@
+(library (name zstandard) (public_name zstandard) (c_names zstd_stubs)
+ (c_flags (:standard \ -Werror -pedantic -Wall -Wunused) -w)
+ (c_library_flags :standard -lzstd)
+ (libraries core_kernel zstd_bindings ctypes.stubs ctypes)
+ (preprocess (pps ppx_jane)))
+
+(rule (targets zstd_generated.ml zstd_stubs.c)
+ (deps (:first_dep ../gen/zstd_gen.exe)) (action (bash ./%{first_dep})))
