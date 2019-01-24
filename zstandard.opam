@@ -13,6 +13,7 @@ depends: [
   "ocaml" {>= "4.07.0"}
   "core_kernel"
   "ppx_jane"
+  "conf-zstd"
   "ctypes"
   "dune"        {build & >= "1.5.1"}
 ]
@@ -20,12 +21,3 @@ synopsis: "OCaml bindings to Zstandard"
 description: "
 Zstandard is a real-time compression algorithm which provides high compression ratios.
 "
-
-depexts: [
- ["libzstd-dev"] {os-distribution = "debian"}
- ["libzstd-dev"] {os-distribution = "ubuntu"}
- ["libzstd-devel"] {os-distribution = "centos"}
- ["libzstd-devel"] {os-distribution = "rhel"}
- ["libzstd-devel"] {os-distribution = "fedora"}
- ["zstd-dev"] {os-distribution = "alpine"}
-]
