@@ -143,6 +143,64 @@ module With_explicit_context : sig
 end
 
 module Dictionary : sig
+  module Training_algorithm : sig
+    module Cover : sig
+      type t =
+        { k : int  (** Segment size : constraint: 0 < k : Reasonable range [16, 2048+] *)
+        ; d : int  (** dmer size : constraint: 0 < d <= k : Reasonable range [6, 16] *)
+        ; steps : int
+        (** Number of steps : Only used for optimization : 0 means default (40) : Higher
+            means more parameters checked *)
+        ; nb_threads : int
+        (** Number of threads : constraint: 0 < nbThreads : 1 means single-threaded : Only
+            used for optimization : Ignored if ZSTD_MULTITHREAD is not defined *)
+        ; split_point : float
+        (** Percentage of samples used for training: Only used for optimization : the first
+            nbSamples * splitPoint samples will be used to training, the last nbSamples *
+            (1 - splitPoint) samples will be used for testing, 0 means default (1.0), 1.0
+            when all samples are used for both training and testing *)
+        }
+
+      (** Some default, reasonable, value for the parameters *)
+      val default : t
+    end
+
+    module Fast_cover : sig
+      type t =
+        { k : int  (** Segment size : constraint: 0 < k : Reasonable range [16, 2048+] *)
+        ; d : int  (** dmer size : constraint: 0 < d <= k : Reasonable range [6, 16] *)
+        ; f : int
+        (** log of size of frequency array : constraint: 0 < f <= 31 : 1 means default(20)*)
+        ; steps : int
+        (** Number of steps : Only used for optimization : 0 means default (40) : Higher
+            means more parameters checked *)
+        ; nb_threads : int
+        (** Number of threads : constraint: 0 < nbThreads : 1 means single-threaded : Only
+            used for optimization : Ignored if ZSTD_MULTITHREAD is not defined *)
+        ; split_point : float
+        (** Percentage of samples used for training: Only used for optimization : the first
+            nbSamples * splitPoint samples will be used to training, the last nbSamples *
+            (1 - splitPoint) samples will be used for testing, 0 means default (0.75), 1.0
+            when all samples are used for both training and testing *)
+        ; accel : int
+        (** Acceleration level: constraint: 0 < accel <= 10, higher means faster and less
+            accurate, 0 means default(1) *)
+        }
+    end
+
+    type t =
+      | Default
+      (** Invokes the fast cover algorithm with reasonable default parameters. Versions of
+          zstd <= 1.3.5 used the cover algorithm.*)
+      | Cover of Cover.t  (** Slower, higher quality generator. *)
+      | Fast_cover of Fast_cover.t
+      (** The new builder, named fastcover, is about 10x faster than the previous default
+          generator, cover, while suffering only negligible accuracy losses (<1%). It's
+          effectively an approximative version of cover, which throws away accuracy for the
+          benefit of speed and memory. This is zstd's default. Slower but higher quality
+          generator remains accessible using [Cover]. *)
+  end
+
   (** [train ?dict_size strings] trains a dictionary from an array of samples. [dict_size]
       defaults to 100KB, which is a reasonable dictionary size. In general it's
       recommended to provide a few thousands samples (though this can vary a lot); and
@@ -151,7 +209,12 @@ module Dictionary : sig
 
       The underlying C function can raise, in which case this function will raise [Error s].
   *)
-  val train : ?dict_size:int -> string array -> 'a Output.t -> 'a
+  val train
+    :  ?dict_size:int
+    -> ?training_algorithm:Training_algorithm.t
+    -> string array
+    -> 'a Output.t
+    -> 'a
 end
 
 module Simple_dictionary : sig

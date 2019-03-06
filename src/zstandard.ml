@@ -422,7 +422,74 @@ end
 module Dictionary = struct
   open Raw.Dictionary
 
-  let train ?(dict_size = 102400) strings return =
+  module Training_algorithm = struct
+    module Cover = struct
+      type t =
+        { k : int
+        ; d : int
+        ; steps : int
+        ; nb_threads : int
+        ; split_point : float
+        }
+
+      let raw (t : t) =
+        let r = Ctypes.make Raw.Dictionary.Cover_params.t in
+        Ctypes.setf r Raw.Dictionary.Cover_params.k (Unsigned.UInt.of_int t.k);
+        Ctypes.setf r Raw.Dictionary.Cover_params.d (Unsigned.UInt.of_int t.d);
+        Ctypes.setf r Raw.Dictionary.Cover_params.steps (Unsigned.UInt.of_int t.steps);
+        Ctypes.setf
+          r
+          Raw.Dictionary.Cover_params.nbThreads
+          (Unsigned.UInt.of_int t.nb_threads);
+        Ctypes.setf r Raw.Dictionary.Cover_params.splitPoint t.split_point;
+        r
+      ;;
+
+      let default = { k = 1024; d = 8; steps = 0; nb_threads = 0; split_point = 0.0 }
+    end
+
+    module Fast_cover = struct
+      type t =
+        { k : int
+        ; d : int
+        ; f : int
+        ; steps : int
+        ; nb_threads : int
+        ; split_point : float
+        ; accel : int
+        }
+
+      let raw (t : t) =
+        let r = Ctypes.make Raw.Dictionary.FastCover_params.t in
+        Ctypes.setf r Raw.Dictionary.FastCover_params.k (Unsigned.UInt.of_int t.k);
+        Ctypes.setf r Raw.Dictionary.FastCover_params.d (Unsigned.UInt.of_int t.d);
+        Ctypes.setf r Raw.Dictionary.FastCover_params.f (Unsigned.UInt.of_int t.f);
+        Ctypes.setf
+          r
+          Raw.Dictionary.FastCover_params.steps
+          (Unsigned.UInt.of_int t.steps);
+        Ctypes.setf
+          r
+          Raw.Dictionary.FastCover_params.nbThreads
+          (Unsigned.UInt.of_int t.nb_threads);
+        Ctypes.setf r Raw.Dictionary.FastCover_params.splitPoint t.split_point;
+        Ctypes.setf
+          r
+          Raw.Dictionary.FastCover_params.accel
+          (Unsigned.UInt.of_int t.accel);
+        r
+      ;;
+    end
+
+    type t =
+      | Default
+      | Cover of Cover.t
+      | Fast_cover of Fast_cover.t
+  end
+
+  open Training_algorithm
+
+  let train ?(dict_size = 102400) ?(training_algorithm = Default) strings return =
     let dict_buffer, dict_length, prepared = Output.prepare return dict_size in
     let total_size =
       Array.fold strings ~init:0 ~f:(fun acc s -> acc + String.length s)
@@ -438,13 +505,31 @@ module Dictionary = struct
         incr current
       done
     done;
+    let samples_buffer = Ctypes.to_voidp (Ctypes.bigarray_start Array1 samples_buffer) in
+    let sizes = Ctypes.CArray.start sizes in
+    let nb_strings = Unsigned.UInt.of_int (Array.length strings) in
     let size_or_error =
-      trainFromBuffer
-        dict_buffer
-        dict_length
-        (Ctypes.to_voidp (Ctypes.bigarray_start Array1 samples_buffer))
-        (Ctypes.CArray.start sizes)
-        (Unsigned.UInt.of_int (Array.length strings))
+      match training_algorithm with
+      | Default ->
+        trainFromBuffer dict_buffer dict_length samples_buffer sizes nb_strings
+      | Cover cover ->
+        let cover = Cover.raw cover in
+        trainFromBuffer_cover
+          dict_buffer
+          dict_length
+          samples_buffer
+          sizes
+          nb_strings
+          cover
+      | Fast_cover cover ->
+        let cover = Fast_cover.raw cover in
+        trainFromBuffer_fastCover
+          dict_buffer
+          dict_length
+          samples_buffer
+          sizes
+          nb_strings
+          cover
     in
     Output.return prepared ~size_or_error
   ;;

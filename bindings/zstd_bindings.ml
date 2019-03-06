@@ -224,12 +224,58 @@ module C(F: Cstubs.FOREIGN) = struct
   end
 
   module Dictionary = struct
+    module Cover_params  = struct
+      let s : [`Cover] structure typ = structure "ZDICT_cover_params_s"
+      let k = field s "k" uint
+      let d = field s "d" uint
+      let steps = field s "steps" uint
+      let nbThreads = field s "nbThreads" uint
+      let splitPoint =  field s "splitPoint" double
+      let () = seal s
+
+      let t = typedef s "ZDICT_cover_params_t"
+    end
+
+    module FastCover_params  = struct
+      let s : [`fastCover] structure typ = structure "ZDICT_fastCover_params_s"
+      let k = field s "k" uint
+      let d = field s "d" uint
+      let f = field s "f" uint
+      let steps = field s "steps" uint
+      let nbThreads = field s "nbThreads" uint
+      let splitPoint =  field s "splitPoint" double
+      let accel = field s "accel" uint
+      let () = seal s
+
+      let t = typedef s "ZDICT_fastCover_params_t"
+    end
+
     let trainFromBuffer = foreign "ZDICT_trainFromBuffer" (
       ptr void (* dictBuffer *)
       @-> size_t (* dictBufferCapacity *)
       @-> const (ptr void) (* samplesBuffer *)
       @-> const (ptr size_t) (* samplesSizes *)
       @-> uint (* nbSamples *)
+      @-> returning size_t
+    )
+
+    let trainFromBuffer_cover = foreign "ZDICT_trainFromBuffer_cover" (
+      ptr void (* dictBuffer *)
+      @-> size_t (* dictBufferCapacity *)
+      @-> const (ptr void) (* samplesBuffer *)
+      @-> const (ptr size_t) (* samplesSizes *)
+      @-> uint (* nbSamples *)
+      @-> Cover_params.t  (* parameters *)
+      @-> returning size_t
+    )
+
+    let trainFromBuffer_fastCover = foreign "ZDICT_trainFromBuffer_fastCover" (
+      ptr void (* dictBuffer *)
+      @-> size_t (* dictBufferCapacity *)
+      @-> const (ptr void) (* samplesBuffer *)
+      @-> const (ptr size_t) (* samplesSizes *)
+      @-> uint (* nbSamples *)
+      @-> FastCover_params.t  (* parameters *)
       @-> returning size_t
     )
 
