@@ -1,4 +1,4 @@
-open Core_kernel
+open Core
 open! Ctypes
 module Raw = Zstd_bindings.C (Zstd_generated)
 
@@ -90,12 +90,14 @@ module Output = struct
   module Allocated = struct
     type 'a t =
       | In_buffer : int t
+      | In_iobuf : (read_write, Iobuf.seek) Iobuf.t -> unit t
       | Allocate_string : char ptr -> string t
       | Allocate_bigstring : Bigstring.t -> Bigstring.t t
   end
 
   type 'a t =
     | In_buffer : { buffer : Bigstring.t; pos : int; len : int } -> int t
+    | In_iobuf : { iobuf : (read_write, Iobuf.seek) Iobuf.t } -> unit t
     | Allocate_string : { size_limit : int option } -> string t
     | Allocate_bigstring : { size_limit : int option } -> Bigstring.t t
 
@@ -108,6 +110,7 @@ module Output = struct
     In_buffer { buffer; pos; len }
   ;;
 
+  let in_iobuf iobuf = In_iobuf { iobuf }
   let allocate_string ~size_limit = Allocate_string { size_limit }
   let allocate_bigstring ~size_limit = Allocate_bigstring { size_limit }
 
@@ -118,6 +121,7 @@ module Output = struct
     | Allocate_bigstring { size_limit } ->
       Option.value_map size_limit ~default:true ~f:(fun size_limit -> size <= size_limit)
     | In_buffer { len; _ } -> size <= len
+    | In_iobuf { iobuf } -> size <= Iobuf.length iobuf
   ;;
 
   let prepare (type a) (t : a t) size : _ * _ * a Allocated.t =
@@ -136,6 +140,12 @@ module Output = struct
       ( Ctypes.to_voidp (Ctypes.bigarray_start Array1 buffer +@ pos)
       , Unsigned.Size_t.of_int len
       , Allocated.In_buffer )
+    | In_iobuf { iobuf } ->
+      let buffer = Iobuf.Expert.to_bigstring_shared iobuf in
+      let len = Iobuf.length iobuf in
+      ( Ctypes.to_voidp (Ctypes.bigarray_start Array1 buffer)
+      , Unsigned.Size_t.of_int len
+      , Allocated.In_iobuf iobuf )
   ;;
 
   let return (type a) (t : a Allocated.t) ~(size_or_error : Unsigned.Size_t.t) : a =
@@ -146,6 +156,7 @@ module Output = struct
     | Allocated.Allocate_bigstring buffer ->
       Bigstring.unsafe_destroy_and_resize ~len:size buffer
     | Allocated.In_buffer -> size
+    | Allocated.In_iobuf iobuf -> Iobuf.resize ~len:size iobuf
   ;;
 end
 
@@ -168,6 +179,11 @@ module Input = struct
     in
     check_length ~pos ~len ~slen;
     From_bigstring { buffer = str; pos; len }
+  ;;
+
+  let from_iobuf iobuf =
+    let str = Iobuf.Expert.to_bigstring_shared iobuf in
+    from_bigstring str
   ;;
 
   let from_string ?(pos = 0) ?len s =

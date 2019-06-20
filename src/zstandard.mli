@@ -1,4 +1,4 @@
-open Core_kernel
+open Core
 
 (** zstd, short for Zstandard, is a fast lossless compression algorithm, targeting
     real-time compression scenarios at zlib-level and better compression ratios. The zstd
@@ -59,6 +59,10 @@ module Output : sig
       was used. *)
   val in_buffer : ?pos:int -> ?len:int -> Bigstring.t -> int t
 
+  (** Passing [in_buffer iobuf] to Zstd functions will cause them to output their result
+      in the iobuf. *)
+  val in_iobuf : (read_write, Iobuf.seek) Iobuf.t -> unit t
+
   (** Passing [allocate_string] to Zstd functions will cause them to allocate an ocaml
       string to contain their result. *)
   val allocate_string : size_limit:int option -> string t
@@ -87,6 +91,10 @@ module Input : sig
   (** [from_bigstring ?pos ?len s] will pass the content of [s] between [pos] and
       [pos+len] to Zstd functions. This does not incur a copy. *)
   val from_bigstring : ?pos:int -> ?len:int -> Bigstring.t -> t
+
+  (** [from_iobuf iobuf] will pass the content of [iobuf] to Zstd functions. This
+      does not incur a copy. *)
+  val from_iobuf : ([> read], _) Iobuf.t -> t
 end
 
 (** Returns the decompressed size of a message. Since decompressed size is an optional
