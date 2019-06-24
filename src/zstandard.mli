@@ -94,7 +94,7 @@ module Input : sig
 
   (** [from_iobuf iobuf] will pass the content of [iobuf] to Zstd functions. This
       does not incur a copy. *)
-  val from_iobuf : ([> read], _) Iobuf.t -> t
+  val from_iobuf : ([> read ], _) Iobuf.t -> t
 end
 
 (** Returns the decompressed size of a message. Since decompressed size is an optional
@@ -154,8 +154,8 @@ module Dictionary : sig
   module Training_algorithm : sig
     module Cover : sig
       type t =
-        { k : int  (** Segment size : constraint: 0 < k : Reasonable range [16, 2048+] *)
-        ; d : int  (** dmer size : constraint: 0 < d <= k : Reasonable range [6, 16] *)
+        { k : int (** Segment size : constraint: 0 < k : Reasonable range [16, 2048+] *)
+        ; d : int (** dmer size : constraint: 0 < d <= k : Reasonable range [6, 16] *)
         ; steps : int
         (** Number of steps : Only used for optimization : 0 means default (40) : Higher
             means more parameters checked *)
@@ -175,8 +175,8 @@ module Dictionary : sig
 
     module Fast_cover : sig
       type t =
-        { k : int  (** Segment size : constraint: 0 < k : Reasonable range [16, 2048+] *)
-        ; d : int  (** dmer size : constraint: 0 < d <= k : Reasonable range [6, 16] *)
+        { k : int (** Segment size : constraint: 0 < k : Reasonable range [16, 2048+] *)
+        ; d : int (** dmer size : constraint: 0 < d <= k : Reasonable range [6, 16] *)
         ; f : int
         (** log of size of frequency array : constraint: 0 < f <= 31 : 1 means default(20)*)
         ; steps : int
@@ -200,7 +200,7 @@ module Dictionary : sig
       | Default
       (** Invokes the fast cover algorithm with reasonable default parameters. Versions of
           zstd <= 1.3.5 used the cover algorithm.*)
-      | Cover of Cover.t  (** Slower, higher quality generator. *)
+      | Cover of Cover.t (** Slower, higher quality generator. *)
       | Fast_cover of Fast_cover.t
       (** The new builder, named fastcover, is about 10x faster than the previous default
           generator, cover, while suffering only negligible accuracy losses (<1%). It's
@@ -223,6 +223,7 @@ module Dictionary : sig
     -> string array
     -> 'a Output.t
     -> 'a
+
 end
 
 module Simple_dictionary : sig

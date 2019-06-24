@@ -304,7 +304,7 @@ module Streaming = struct
   open Raw.Streaming
 
   module Inbuffer = struct
-    type t = [`Inbuffer] structure
+    type t = [ `Inbuffer ] structure
 
     let create str ~pos ~len : t =
       let inbuffer = Ctypes.make inbuffer in
@@ -319,7 +319,7 @@ module Streaming = struct
   end
 
   module Outbuffer = struct
-    type t = [`Outbuffer] structure
+    type t = [ `Outbuffer ] structure
 
     let create str ~pos ~len : t =
       let outbuffer = Ctypes.make outbuffer in
