@@ -96,7 +96,12 @@ module Output = struct
   end
 
   type 'a t =
-    | In_buffer : { buffer : Bigstring.t; pos : int; len : int } -> int t
+    | In_buffer :
+        { buffer : Bigstring.t
+        ; pos : int
+        ; len : int
+        }
+        -> int t
     | In_iobuf : { iobuf : (read_write, Iobuf.seek) Iobuf.t } -> unit t
     | Allocate_string : { size_limit : int option } -> string t
     | Allocate_bigstring : { size_limit : int option } -> Bigstring.t t
@@ -162,8 +167,17 @@ end
 
 module Input = struct
   type t =
-    | From_bytes of { bytes : Bytes.t; pos : int; len : int; buffer : Bigstring.t }
-    | From_bigstring of { buffer : Bigstring.t; pos : int; len : int }
+    | From_bytes of
+        { bytes : Bytes.t
+        ; pos : int
+        ; len : int
+        ; buffer : Bigstring.t
+        }
+    | From_bigstring of
+        { buffer : Bigstring.t
+        ; pos : int
+        ; len : int
+        }
 
   let check_length ~pos ~len ~slen =
     if not (0 <= pos && pos < slen && 0 <= len && pos + len <= slen)
