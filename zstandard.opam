@@ -14,7 +14,7 @@ depends: [
   "core"
   "ppx_jane"
   "conf-zstd"
-  "ctypes"    {>= "0.14.0"}
+  "ctypes"    {= "0.14.0+dynamicfunptrtype"}
   "dune"      {build & >= "1.5.1"}
 ]
 synopsis: "OCaml bindings to Zstandard"
