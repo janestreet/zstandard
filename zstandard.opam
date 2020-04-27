@@ -12,10 +12,11 @@ build: [
 depends: [
   "ocaml" {>= "4.08.0"}
   "core"
+  "core_kernel"
   "ppx_jane"
   "conf-zstd"
-  "ctypes"    {>= "0.16.0"}
-  "dune"      {>= "2.0.0"}
+  "ctypes"      {>= "0.16.0"}
+  "dune"        {>= "2.0.0"}
 ]
 synopsis: "OCaml bindings to Zstandard"
 description: "
