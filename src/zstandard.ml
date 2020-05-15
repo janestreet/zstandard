@@ -606,6 +606,7 @@ module Bulk_processing_dictionary = struct
   module Compression = struct
     type t =
       { ctx : Raw.Bulk_processing_dictionary.Compression.t Ctypes.ptr
+      ; input_to_prevent_gc : Input.t
       ; mutable freed : bool
       }
 
@@ -618,7 +619,7 @@ module Bulk_processing_dictionary = struct
           dictionary_length
           compression_level
       in
-      { ctx; freed = false }
+      { ctx; input_to_prevent_gc = dictionary; freed = false }
     ;;
 
     let free t =
@@ -653,6 +654,7 @@ module Bulk_processing_dictionary = struct
   module Decompression = struct
     type t =
       { ctx : Raw.Bulk_processing_dictionary.Decompression.t Ctypes.ptr
+      ; input_to_prevent_gc : Input.t
       ; mutable freed : bool
       }
 
@@ -664,7 +666,7 @@ module Bulk_processing_dictionary = struct
           dictionary_ptr
           dictionary_length
       in
-      { ctx; freed = false }
+      { ctx; input_to_prevent_gc = dictionary; freed = false }
     ;;
 
     let free t =
