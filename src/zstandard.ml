@@ -91,7 +91,7 @@ module Output = struct
     type 'a t =
       | In_buffer : int t
       | In_iobuf : (read_write, Iobuf.seek) Iobuf.t -> unit t
-      | Allocate_string : char ptr -> string t
+      | Allocate_string : Bigstring.t -> string t
       | Allocate_bigstring : Bigstring.t -> Bigstring.t t
   end
 
@@ -134,8 +134,10 @@ module Output = struct
     let size_t = Unsigned.Size_t.of_int size in
     match t with
     | Allocate_string _ ->
-      let ptr = Ctypes.(allocate_n char ~count:size) in
-      to_voidp ptr, size_t, Allocated.Allocate_string ptr
+      let buffer = Bigstring.create size in
+      ( Ctypes.to_voidp (Ctypes.bigarray_start Array1 buffer)
+      , size_t
+      , Allocated.Allocate_string buffer )
     | Allocate_bigstring _ ->
       let buffer = Bigstring.create size in
       ( Ctypes.to_voidp (Ctypes.bigarray_start Array1 buffer)
@@ -157,7 +159,7 @@ module Output = struct
     let size_t = raise_on_error size_or_error in
     let size = Unsigned.Size_t.to_int size_t in
     match t with
-    | Allocated.Allocate_string charp -> Ctypes.string_from_ptr charp ~length:size
+    | Allocated.Allocate_string buffer -> Bigstring.to_string ~len:size buffer
     | Allocated.Allocate_bigstring buffer ->
       Bigstring.unsafe_destroy_and_resize ~len:size buffer
     | Allocated.In_buffer -> size
@@ -167,17 +169,10 @@ end
 
 module Input = struct
   type t =
-    | From_bytes of
-        { bytes : Bytes.t
-        ; pos : int
-        ; len : int
-        ; buffer : Bigstring.t
-        }
-    | From_bigstring of
-        { buffer : Bigstring.t
-        ; pos : int
-        ; len : int
-        }
+    { buffer : Bigstring.t
+    ; pos : int
+    ; len : int
+    }
 
   let check_length ~pos ~len ~slen =
     if not (0 <= pos && pos < slen && 0 <= len && pos + len <= slen)
@@ -192,7 +187,7 @@ module Input = struct
       | None -> slen - pos
     in
     check_length ~pos ~len ~slen;
-    From_bigstring { buffer = str; pos; len }
+    { buffer = str; pos; len }
   ;;
 
   let from_iobuf iobuf =
@@ -209,7 +204,7 @@ module Input = struct
     in
     check_length ~pos ~len ~slen;
     let buffer = Bigstring.of_string ~pos ~len s in
-    From_bigstring { buffer; pos = 0; len }
+    { buffer; pos = 0; len }
   ;;
 
   let from_bytes ?(pos = 0) ?len s =
@@ -219,24 +214,15 @@ module Input = struct
       | Some len -> len
       | None -> slen - pos
     in
-    let buffer = Bigstring.create len in
-    From_bytes { bytes = s; pos; len; buffer }
+    check_length ~pos ~len ~slen;
+    let buffer = Bigstring.of_bytes ~pos ~len s in
+    { buffer; pos = 0; len }
   ;;
 
-  let length = function
-    | From_bytes { len; _ } -> len
-    | From_bigstring { len; _ } -> len
-  ;;
+  let length { len; _ } = len
 
-  let ptr t =
-    match t with
-    | From_bytes { bytes; pos; len; buffer } ->
-      for i = 0 to len - 1 do
-        Bigstring.set buffer i (Bytes.get bytes (i + pos))
-      done;
-      Ctypes.to_voidp (Ctypes.bigarray_start Array1 buffer)
-    | From_bigstring { buffer; pos; _ } ->
-      Ctypes.to_voidp (Ctypes.bigarray_start Array1 buffer +@ pos)
+  let ptr { buffer; pos; _ } =
+    Ctypes.to_voidp (Ctypes.bigarray_start Array1 buffer +@ pos)
   ;;
 end
 
