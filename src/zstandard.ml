@@ -220,10 +220,7 @@ module Input = struct
   ;;
 
   let length { len; _ } = len
-
-  let ptr { buffer; pos; _ } =
-    Ctypes.to_voidp (Ctypes.bigarray_start Array1 buffer +@ pos)
-  ;;
+  let ptr { buffer; pos; _ } = Ctypes.to_voidp (Ctypes.bigarray_start Array1 buffer +@ pos)
 end
 
 let decompressed_size input =
@@ -308,10 +305,7 @@ module Streaming = struct
 
     let create str ~pos ~len : t =
       let inbuffer = Ctypes.make inbuffer in
-      Ctypes.setf
-        inbuffer
-        inbuf_psrc
-        (Ctypes.to_voidp (Ctypes.bigarray_start Array1 str));
+      Ctypes.setf inbuffer inbuf_psrc (Ctypes.to_voidp (Ctypes.bigarray_start Array1 str));
       Ctypes.setf inbuffer inbuf_pos (Unsigned.Size_t.of_int pos);
       Ctypes.setf inbuffer inbuf_size (Unsigned.Size_t.of_int (pos + len));
       inbuffer
@@ -480,19 +474,13 @@ module Dictionary = struct
         Ctypes.setf r Raw.Dictionary.FastCover_params.k (Unsigned.UInt.of_int t.k);
         Ctypes.setf r Raw.Dictionary.FastCover_params.d (Unsigned.UInt.of_int t.d);
         Ctypes.setf r Raw.Dictionary.FastCover_params.f (Unsigned.UInt.of_int t.f);
-        Ctypes.setf
-          r
-          Raw.Dictionary.FastCover_params.steps
-          (Unsigned.UInt.of_int t.steps);
+        Ctypes.setf r Raw.Dictionary.FastCover_params.steps (Unsigned.UInt.of_int t.steps);
         Ctypes.setf
           r
           Raw.Dictionary.FastCover_params.nbThreads
           (Unsigned.UInt.of_int t.nb_threads);
         Ctypes.setf r Raw.Dictionary.FastCover_params.splitPoint t.split_point;
-        Ctypes.setf
-          r
-          Raw.Dictionary.FastCover_params.accel
-          (Unsigned.UInt.of_int t.accel);
+        Ctypes.setf r Raw.Dictionary.FastCover_params.accel (Unsigned.UInt.of_int t.accel);
         r
       ;;
     end
@@ -507,9 +495,7 @@ module Dictionary = struct
 
   let train ?(dict_size = 102400) ?(training_algorithm = Default) strings return =
     let dict_buffer, dict_length, prepared = Output.prepare return dict_size in
-    let total_size =
-      Array.fold strings ~init:0 ~f:(fun acc s -> acc + String.length s)
-    in
+    let total_size = Array.fold strings ~init:0 ~f:(fun acc s -> acc + String.length s) in
     let samples_buffer = Bigstring.create total_size in
     let sizes = Ctypes.CArray.make Ctypes.size_t (Array.length strings) in
     let current = ref 0 in
@@ -526,8 +512,7 @@ module Dictionary = struct
     let nb_strings = Unsigned.UInt.of_int (Array.length strings) in
     let size_or_error =
       match training_algorithm with
-      | Default ->
-        trainFromBuffer dict_buffer dict_length samples_buffer sizes nb_strings
+      | Default -> trainFromBuffer dict_buffer dict_length samples_buffer sizes nb_strings
       | Cover cover ->
         let cover = Cover.raw cover in
         trainFromBuffer_cover
