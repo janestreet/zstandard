@@ -32,6 +32,8 @@ let get_frame_content_size =
     else ull
 ;;
 
+let max_compression_level = Raw.maxCLevel
+
 module Compression_context : sig
   type t
 

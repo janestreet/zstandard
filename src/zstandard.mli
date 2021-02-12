@@ -48,6 +48,9 @@ exception Not_enough_capacity of int
     recommended. *)
 exception Decompressed_size_exceeds_max_int of Int64.t
 
+(** Returns the max possible value for [compression_level] *)
+val max_compression_level : unit -> int
+
 module Output : sig
   (** Zstd exposes multiple API flavors which can be used to transform strings into
       strings. The ['a t] type encodes the various ways to return a string from Zstd's
