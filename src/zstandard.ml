@@ -34,6 +34,10 @@ let get_frame_content_size =
 
 let max_compression_level = Raw.maxCLevel
 
+let compression_output_size_bound input_size =
+  input_size |> Unsigned.Size_t.of_int64 |> Raw.compressBound |> Unsigned.Size_t.to_int64
+;;
+
 module Compression_context : sig
   type t
 

@@ -51,6 +51,13 @@ exception Decompressed_size_exceeds_max_int of Int64.t
 (** Returns the max possible value for [compression_level] *)
 val max_compression_level : unit -> int
 
+(** [compression_output_size_bound x] is the maximum possible output size when doing a
+    a single-pass compression of an input of size [x].
+
+    (Single pass means something like [Simple.compress]; maximum possible means the worst
+    case of the compression algorithm.). *)
+val compression_output_size_bound : Int64.t -> Int64.t
+
 module Output : sig
   (** Zstd exposes multiple API flavors which can be used to transform strings into
       strings. The ['a t] type encodes the various ways to return a string from Zstd's
