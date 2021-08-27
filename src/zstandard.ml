@@ -18,6 +18,10 @@ let raise_if_already_freed freed name =
   if freed then failwithf "%s used after being free" name ()
 ;;
 
+let ptr_to_start_of_iobuf_window iobuf =
+  Ctypes.bigarray_start Array1 (Iobuf.Expert.buf iobuf) +@ Iobuf.Expert.lo iobuf
+;;
+
 let get_frame_content_size =
   let content_size_unknown = Unsigned.ULLong.(sub zero (of_int 1)) in
   let content_size_error = Unsigned.ULLong.(sub zero (of_int 2)) in
@@ -154,10 +158,8 @@ module Output = struct
       , Unsigned.Size_t.of_int len
       , Allocated.In_buffer )
     | In_iobuf { iobuf } ->
-      let buffer = Iobuf.Expert.to_bigstring_shared iobuf in
-      let len = Iobuf.length iobuf in
-      ( Ctypes.to_voidp (Ctypes.bigarray_start Array1 buffer)
-      , Unsigned.Size_t.of_int len
+      ( Ctypes.to_voidp (ptr_to_start_of_iobuf_window iobuf)
+      , Unsigned.Size_t.of_int (Iobuf.length iobuf)
       , Allocated.In_iobuf iobuf )
   ;;
 
@@ -174,59 +176,18 @@ module Output = struct
 end
 
 module Input = struct
-  type t =
-    { buffer : Bigstring.t
-    ; pos : int
-    ; len : int
-    }
+  type t = (read, Iobuf.no_seek) Iobuf.t
 
-  let check_length ~pos ~len ~slen =
-    if not (0 <= pos && pos < slen && 0 <= len && pos + len <= slen)
-    then raise_s [%message "Invalid string slice" (pos : int) (len : int) (slen : int)]
+  let from_bigstring = Iobuf.of_bigstring
+  let from_iobuf iobuf = Iobuf.read_only (Iobuf.no_seek iobuf)
+  let from_bytes ?pos ?len s : t = from_bigstring (Bigstring.of_bytes ?pos ?len s)
+
+  let from_string ?pos ?len s : t =
+    from_bytes ?pos ?len (Bytes.unsafe_of_string_promise_no_mutation s)
   ;;
 
-  let from_bigstring ?(pos = 0) ?len str =
-    let slen = Bigstring.length str in
-    let len =
-      match len with
-      | Some len -> len
-      | None -> slen - pos
-    in
-    check_length ~pos ~len ~slen;
-    { buffer = str; pos; len }
-  ;;
-
-  let from_iobuf iobuf =
-    let str = Iobuf.Expert.to_bigstring_shared iobuf in
-    from_bigstring str
-  ;;
-
-  let from_string ?(pos = 0) ?len s =
-    let slen = String.length s in
-    let len =
-      match len with
-      | Some len -> len
-      | None -> slen - pos
-    in
-    check_length ~pos ~len ~slen;
-    let buffer = Bigstring.of_string ~pos ~len s in
-    { buffer; pos = 0; len }
-  ;;
-
-  let from_bytes ?(pos = 0) ?len s =
-    let slen = Bytes.length s in
-    let len =
-      match len with
-      | Some len -> len
-      | None -> slen - pos
-    in
-    check_length ~pos ~len ~slen;
-    let buffer = Bigstring.of_bytes ~pos ~len s in
-    { buffer; pos = 0; len }
-  ;;
-
-  let length { len; _ } = len
-  let ptr { buffer; pos; _ } = Ctypes.to_voidp (Ctypes.bigarray_start Array1 buffer +@ pos)
+  let length = Iobuf.length
+  let ptr t : _ ptr = Ctypes.to_voidp (ptr_to_start_of_iobuf_window t)
 end
 
 let decompressed_size input =
