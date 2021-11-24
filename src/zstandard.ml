@@ -163,7 +163,7 @@ module Output = struct
       , Allocated.In_iobuf iobuf )
   ;;
 
-  let return (type a) (t : a Allocated.t) ~(size_or_error : Unsigned.Size_t.t) : a =
+  let return_exn (type a) (t : a Allocated.t) ~(size_or_error : Unsigned.Size_t.t) : a =
     let size_t = raise_on_error size_or_error in
     let size = Unsigned.Size_t.to_int size_t in
     match t with
@@ -172,6 +172,10 @@ module Output = struct
       Bigstring.unsafe_destroy_and_resize ~len:size buffer
     | Allocated.In_buffer -> size
     | Allocated.In_iobuf iobuf -> Iobuf.resize ~len:size iobuf
+  ;;
+
+  let return_or_error t ~size_or_error =
+    Or_error.try_with (fun () -> return_exn t ~size_or_error)
   ;;
 end
 
@@ -202,7 +206,7 @@ let compress ~f ~input ~output =
   let size = Raw.compressBound input_length in
   let ptr, size, prepared = Output.prepare output (Unsigned.Size_t.to_int size) in
   let size_or_error = f ptr size input_ptr input_length in
-  Output.return prepared ~size_or_error
+  Output.return_exn prepared ~size_or_error
 ;;
 
 let decompress_with_frame_length_check ~f ~input ~output =
@@ -216,7 +220,7 @@ let decompress_with_frame_length_check ~f ~input ~output =
   let size_or_error =
     f output_ptr output_length input_ptr (input_length |> Unsigned.Size_t.of_int)
   in
-  Output.return prepared ~size_or_error
+  Output.return_exn prepared ~size_or_error
 ;;
 
 module With_explicit_context = struct
@@ -499,7 +503,7 @@ module Dictionary = struct
           nb_strings
           cover
     in
-    Output.return prepared ~size_or_error
+    Output.return_or_error prepared ~size_or_error
   ;;
 end
 

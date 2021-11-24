@@ -225,14 +225,14 @@ module Dictionary : sig
       it's recommended that the total size of the samples should be around 100x times the
       target dictionary size.
 
-      The underlying C function can raise, in which case this function will raise [Error s].
-  *)
+      If dictionary training fails, you either provided too few samples or a dictionary
+      would not be effective for your data. *)
   val train
     :  ?dict_size:int
     -> ?training_algorithm:Training_algorithm.t
     -> string array
     -> 'a Output.t
-    -> 'a
+    -> 'a Or_error.t
 
 end
 
