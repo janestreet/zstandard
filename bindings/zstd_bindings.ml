@@ -204,6 +204,7 @@ module C(F: Cstubs.FOREIGN) = struct
         @-> ptr outbuffer
         @-> returning size_t
       )
+
       let inbuf_size_hint = foreign "ZSTD_CStreamInSize" (void @-> returning size_t)
       let outbuf_size_hint = foreign "ZSTD_CStreamOutSize" (void @-> returning size_t)
     end

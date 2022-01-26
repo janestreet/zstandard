@@ -328,6 +328,18 @@ module Streaming : sig
     (** [free t] deallocate the underlying datastructure. Subsequent uses of [t] will
         cause exceptions. *)
     val free : t -> unit
+
+    (** The recommended length for [inbuf].  Other sizes will work fine, but zstd
+        compresses a single block all at once instead of incrementally, so providing less
+        data than this will result in the data being stored inside [t] until enough data
+        is provided or [flush] is called *)
+    val recommended_inbuf_length : unit -> int
+
+    (** The recommended length for [outbuf].  This is guaranteed to be enough to store any
+        single compressed block.  As, other sizes will work fine, but smaller sizes may
+        result in multiple calls to [compress] or [flush] than necessary, and larger
+        buffers will use more memory. *)
+    val recommended_outbuf_length : unit -> int
   end
 
   module Decompression : sig

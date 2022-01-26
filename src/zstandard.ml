@@ -357,6 +357,17 @@ module Streaming = struct
       let used_out = Unsigned.Size_t.to_int new_outpos - outpos in
       bytes_internal, used_out
     ;;
+
+    (* Despite returning size_t, these recommended buffer length functions return are
+       small constants (< 1e6) that have upper bounds embedded in the protocol, so we
+       can depend on these conversions not truncating *)
+    let recommended_inbuf_length () =
+      Raw.Streaming.Compression.inbuf_size_hint () |> Unsigned.Size_t.to_int
+    ;;
+
+    let recommended_outbuf_length () =
+      Raw.Streaming.Compression.outbuf_size_hint () |> Unsigned.Size_t.to_int
+    ;;
   end
 
   module Decompression = struct
