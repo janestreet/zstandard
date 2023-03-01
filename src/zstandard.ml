@@ -182,7 +182,7 @@ end
 module Input = struct
   type t = (read, Iobuf.no_seek) Iobuf.t
 
-  let from_bigstring = Iobuf.of_bigstring
+  let from_bigstring ?pos ?len buf = Iobuf.of_bigstring ?pos ?len buf
   let from_iobuf iobuf = Iobuf.read_only (Iobuf.no_seek iobuf)
   let from_bytes ?pos ?len s : t = from_bigstring (Bigstring.of_bytes ?pos ?len s)
 
