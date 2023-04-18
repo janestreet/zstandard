@@ -18,8 +18,8 @@ depends: [
   "ctypes"      {>= "0.18.0"}
   "dune"        {>= "2.0.0"}
 ]
-available: arch != "arm32" & arch != "x86_32"
 synopsis: "OCaml bindings to Zstandard"
 description: "
 Zstandard is a real-time compression algorithm which provides high compression ratios.
 "
+available: (arch = "x86_64" | arch = "arm64") & os = "linux"
