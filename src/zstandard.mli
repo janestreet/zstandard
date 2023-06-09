@@ -29,7 +29,7 @@ exception Error of string
     when using a single-pass function such as [Simple.compress],
     [With_explicit_content.comprss], [Simple_dictionary.compress] and
     [With_bulk_dictionary.compress]. If the decompressed size is not present in the
-    message, it might be necesary to use streaming mode to decompress the message.*)
+    message, it might be necessary to use streaming mode to decompress the message.*)
 exception Content_size_unknown
 
 (** Might be raised when decompressing a message using a single pass decompression
