@@ -42,30 +42,61 @@ let compression_output_size_bound input_size =
   input_size |> Unsigned.Size_t.of_int64 |> Raw.compressBound |> Unsigned.Size_t.to_int64
 ;;
 
+(* Notes on Finalizers:
+
+   While in general the entire library is single-threaded (since one should not use e.g.
+   e.g. a [Raw.Context.Compression.t] from multiple threads), and we expect our users to
+   not call these functions from multiple threads, we can not avoid the possibility that
+   our finalizers is called from a different thread.
+
+   Indeed, depending on exactly how that binding is written, [Compression_context.free]
+   could be called in a different thread _while [Raw.Context.Compression.free] is
+   executing in the main thread_ (which has dropped its reference to [t] after getting
+   [t.ptr] out of the record).
+
+   [t.freed] avoids this problem: we test it, and then immediately set it, without
+   performing any operation that could give up the OCaml runtime lock in between. 
+
+   We must also be careful to place calls to [Gc.keep_alive] in the right places so that
+   the finalizer does not run while [Compression_context] is being used but we only have
+   a reference to the [Raw.Context.Compression.t] and not the [Compression_context.t].
+   This is why [Compression_context.with_exn] has a call to [Gc.keep_alive] at the
+   bottom: otherwise [free] might be run while [f] is running.
+
+   This is true of all the other similar wrappers like [Decompression_context.t],
+   [Streaming.Compression.t], and so on. *)
+
 module Compression_context : sig
   type t
 
   val create : unit -> t
   val free : t -> unit
-  val get_exn : t -> Raw.Context.Compression.t Ctypes.ptr
+  val with_exn : t -> (Raw.Context.Compression.t Ctypes.ptr -> 'a) -> 'a
 end = struct
   type t =
     { ptr : Raw.Context.Compression.t Ctypes.ptr
     ; mutable freed : bool
     }
 
-  let create () : t = { ptr = Raw.Context.Compression.create (); freed = false }
-
-  let free t =
-    raise_if_already_freed t.freed "Compression context";
-    let (_ : Unsigned.size_t) = Raw.Context.Compression.free t.ptr |> raise_on_error in
-    t.freed <- true;
-    ()
+  let free = function
+    | t when t.freed -> ()
+    | t ->
+      t.freed <- true;
+      let (_ : Unsigned.size_t) = Raw.Context.Compression.free t.ptr |> raise_on_error in
+      ()
   ;;
 
-  let get_exn t =
+  let create () : t =
+    let t = { ptr = Raw.Context.Compression.create (); freed = false } in
+    Gc.Expert.add_finalizer_exn t free;
+    t
+  ;;
+
+  let with_exn t f =
     raise_if_already_freed t.freed "Compression context";
-    t.ptr
+    let result = f t.ptr in
+    Gc.keep_alive t;
+    result
   ;;
 end
 
@@ -74,25 +105,34 @@ module Decompression_context : sig
 
   val create : unit -> t
   val free : t -> unit
-  val get_exn : t -> Raw.Context.Decompression.t Ctypes.ptr
+  val with_exn : t -> (Raw.Context.Decompression.t Ctypes.ptr -> 'a) -> 'a
 end = struct
   type t =
     { ptr : Raw.Context.Decompression.t Ctypes.ptr
     ; mutable freed : bool
     }
 
-  let create () : t = { ptr = Raw.Context.Decompression.create (); freed = false }
-
-  let free t =
-    raise_if_already_freed t.freed "Decompression context";
-    let (_ : Unsigned.size_t) = Raw.Context.Decompression.free t.ptr |> raise_on_error in
-    t.freed <- true;
-    ()
+  let free = function
+    | t when t.freed -> ()
+    | t ->
+      t.freed <- true;
+      let (_ : Unsigned.size_t) =
+        Raw.Context.Decompression.free t.ptr |> raise_on_error
+      in
+      ()
   ;;
 
-  let get_exn t =
+  let create () : t =
+    let t = { ptr = Raw.Context.Decompression.create (); freed = false } in
+    Gc.Expert.add_finalizer_exn t free;
+    t
+  ;;
+
+  let with_exn t f =
     raise_if_already_freed t.freed "Decompression context";
-    t.ptr
+    let result = f t.ptr in
+    Gc.keep_alive t;
+    result
   ;;
 end
 
@@ -225,30 +265,30 @@ let decompress_with_frame_length_check ~f ~input ~output =
 
 module With_explicit_context = struct
   let compress (t : Compression_context.t) ~compression_level ~input ~output =
-    let compression_ctx = Compression_context.get_exn t in
-    let f output_ptr output_length input_ptr input_length =
-      Raw.Context.Compression.compress
-        compression_ctx
-        output_ptr
-        output_length
-        input_ptr
-        input_length
-        compression_level
-    in
-    compress ~f ~input ~output
+    Compression_context.with_exn t (fun compression_ctx ->
+      let f output_ptr output_length input_ptr input_length =
+        Raw.Context.Compression.compress
+          compression_ctx
+          output_ptr
+          output_length
+          input_ptr
+          input_length
+          compression_level
+      in
+      compress ~f ~input ~output)
   ;;
 
   let decompress (t : Decompression_context.t) ~input ~output =
-    let decompression_ctx = Decompression_context.get_exn t in
-    let f output_ptr output_length input_ptr input_length =
-      Raw.Context.Decompression.decompress
-        decompression_ctx
-        output_ptr
-        output_length
-        input_ptr
-        input_length
-    in
-    decompress_with_frame_length_check ~input ~output ~f
+    Decompression_context.with_exn t (fun decompression_ctx ->
+      let f output_ptr output_length input_ptr input_length =
+        Raw.Context.Decompression.decompress
+          decompression_ctx
+          output_ptr
+          output_length
+          input_ptr
+          input_length
+      in
+      decompress_with_frame_length_check ~input ~output ~f)
   ;;
 end
 
@@ -306,56 +346,60 @@ module Streaming = struct
       ; mutable freed : bool
       }
 
+    let free = function
+      | t when t.freed -> ()
+      | t ->
+        t.freed <- true;
+        let (_undocumented_retvalue : Unsigned.Size_t.t) = free t.cctx in
+        ()
+    ;;
+
     let create compress_level =
       let t = { cctx = create (); freed = false } in
       let (_ : Unsigned.size_t) = init t.cctx compress_level |> raise_on_error in
+      Gc.Expert.add_finalizer_exn t free;
       t
     ;;
 
-    let free t =
+    let with_exn t f =
       raise_if_already_freed t.freed "Compression context";
-      let (_undocumented_retvalue : Unsigned.Size_t.t) = free t.cctx in
-      t.freed <- true;
-      ()
-    ;;
-
-    let get_exn t =
-      raise_if_already_freed t.freed "Compression context";
-      t.cctx
+      let result = f t.cctx in
+      Gc.keep_alive t;
+      result
     ;;
 
     let compress t ~inbuf ~inpos ~inlen ~outbuf ~outpos ~outlen =
-      let cctx = get_exn t in
-      let inbuffer = Inbuffer.create inbuf ~pos:inpos ~len:inlen in
-      let outbuffer = Outbuffer.create outbuf ~pos:outpos ~len:outlen in
-      let (_ : Unsigned.size_t) =
-        compress cctx (Ctypes.addr outbuffer) (Ctypes.addr inbuffer) |> raise_on_error
-      in
-      let new_inpos = Ctypes.getf inbuffer inbuf_pos in
-      let new_outpos = Ctypes.getf outbuffer outbuf_pos in
-      let used_in = Unsigned.Size_t.to_int new_inpos - inpos in
-      let used_out = Unsigned.Size_t.to_int new_outpos - outpos in
-      used_in, used_out
+      with_exn t (fun cctx ->
+        let inbuffer = Inbuffer.create inbuf ~pos:inpos ~len:inlen in
+        let outbuffer = Outbuffer.create outbuf ~pos:outpos ~len:outlen in
+        let (_ : Unsigned.size_t) =
+          compress cctx (Ctypes.addr outbuffer) (Ctypes.addr inbuffer) |> raise_on_error
+        in
+        let new_inpos = Ctypes.getf inbuffer inbuf_pos in
+        let new_outpos = Ctypes.getf outbuffer outbuf_pos in
+        let used_in = Unsigned.Size_t.to_int new_inpos - inpos in
+        let used_out = Unsigned.Size_t.to_int new_outpos - outpos in
+        used_in, used_out)
     ;;
 
     let flush t ~outbuf ~outpos ~outlen =
-      let cctx = get_exn t in
-      let outbuffer = Outbuffer.create outbuf ~pos:outpos ~len:outlen in
-      let ret = flushStream cctx (Ctypes.addr outbuffer) |> raise_on_error in
-      let bytes_internal = Unsigned.Size_t.to_int ret in
-      let new_outpos = Ctypes.getf outbuffer outbuf_pos in
-      let used_out = Unsigned.Size_t.to_int new_outpos - outpos in
-      bytes_internal, used_out
+      with_exn t (fun cctx ->
+        let outbuffer = Outbuffer.create outbuf ~pos:outpos ~len:outlen in
+        let ret = flushStream cctx (Ctypes.addr outbuffer) |> raise_on_error in
+        let bytes_internal = Unsigned.Size_t.to_int ret in
+        let new_outpos = Ctypes.getf outbuffer outbuf_pos in
+        let used_out = Unsigned.Size_t.to_int new_outpos - outpos in
+        bytes_internal, used_out)
     ;;
 
     let endstream t ~outbuf ~outpos ~outlen =
-      let cctx = get_exn t in
-      let outbuffer = Outbuffer.create outbuf ~pos:outpos ~len:outlen in
-      let ret = endStream cctx (Ctypes.addr outbuffer) |> raise_on_error in
-      let bytes_internal = Unsigned.Size_t.to_int ret in
-      let new_outpos = Ctypes.getf outbuffer outbuf_pos in
-      let used_out = Unsigned.Size_t.to_int new_outpos - outpos in
-      bytes_internal, used_out
+      with_exn t (fun cctx ->
+        let outbuffer = Outbuffer.create outbuf ~pos:outpos ~len:outlen in
+        let ret = endStream cctx (Ctypes.addr outbuffer) |> raise_on_error in
+        let bytes_internal = Unsigned.Size_t.to_int ret in
+        let new_outpos = Ctypes.getf outbuffer outbuf_pos in
+        let used_out = Unsigned.Size_t.to_int new_outpos - outpos in
+        bytes_internal, used_out)
     ;;
 
     (* Despite returning size_t, these recommended buffer length functions return are
@@ -378,35 +422,40 @@ module Streaming = struct
       ; mutable freed : bool
       }
 
+    let free = function
+      | t when t.freed -> ()
+      | t ->
+        t.freed <- true;
+        let (_undocumented_retvalue : Unsigned.Size_t.t) = free t.dctx in
+        ()
+    ;;
+
     let create () =
       let t = { dctx = create (); freed = false } in
       let (_ : Unsigned.size_t) = init t.dctx |> raise_on_error in
+      Gc.Expert.add_finalizer_exn t free;
       t
     ;;
 
-    let free t =
+    let with_exn t f =
       raise_if_already_freed t.freed "Decompression context";
-      let (_undocumented_retvalue : Unsigned.Size_t.t) = free t.dctx in
-      ()
-    ;;
-
-    let get_exn t =
-      raise_if_already_freed t.freed "Decompression context";
-      t.dctx
+      let result = f t.dctx in
+      Gc.keep_alive t;
+      result
     ;;
 
     let decompress t ~inbuf ~inpos ~inlen ~outbuf ~outpos ~outlen =
-      let dctx = get_exn t in
-      let inbuffer = Inbuffer.create inbuf ~pos:inpos ~len:inlen in
-      let outbuffer = Outbuffer.create outbuf ~pos:outpos ~len:outlen in
-      let (_ : Unsigned.size_t) =
-        decompress dctx (Ctypes.addr outbuffer) (Ctypes.addr inbuffer) |> raise_on_error
-      in
-      let new_inpos = Ctypes.getf inbuffer inbuf_pos in
-      let new_outpos = Ctypes.getf outbuffer outbuf_pos in
-      let used_in = Unsigned.Size_t.to_int new_inpos - inpos in
-      let used_out = Unsigned.Size_t.to_int new_outpos - outpos in
-      used_in, used_out
+      with_exn t (fun dctx ->
+        let inbuffer = Inbuffer.create inbuf ~pos:inpos ~len:inlen in
+        let outbuffer = Outbuffer.create outbuf ~pos:outpos ~len:outlen in
+        let (_ : Unsigned.size_t) =
+          decompress dctx (Ctypes.addr outbuffer) (Ctypes.addr inbuffer) |> raise_on_error
+        in
+        let new_inpos = Ctypes.getf inbuffer inbuf_pos in
+        let new_outpos = Ctypes.getf outbuffer outbuf_pos in
+        let used_in = Unsigned.Size_t.to_int new_inpos - inpos in
+        let used_out = Unsigned.Size_t.to_int new_outpos - outpos in
+        used_in, used_out)
     ;;
   end
 end
@@ -520,38 +569,38 @@ end
 
 module Simple_dictionary = struct
   let compress t ~compression_level ~dictionary ~input ~output =
-    let compression_ctx = Compression_context.get_exn t in
-    let dictionary_length = Input.length dictionary |> Unsigned.Size_t.of_int in
-    let dictionary_ptr = Input.ptr dictionary in
-    let f output_ptr output_length input_ptr input_length =
-      Raw.Simple_dictionary.compress_usingDict
-        compression_ctx
-        output_ptr
-        output_length
-        input_ptr
-        input_length
-        dictionary_ptr
-        dictionary_length
-        compression_level
-    in
-    compress ~f ~input ~output
+    Compression_context.with_exn t (fun compression_ctx ->
+      let dictionary_length = Input.length dictionary |> Unsigned.Size_t.of_int in
+      let dictionary_ptr = Input.ptr dictionary in
+      let f output_ptr output_length input_ptr input_length =
+        Raw.Simple_dictionary.compress_usingDict
+          compression_ctx
+          output_ptr
+          output_length
+          input_ptr
+          input_length
+          dictionary_ptr
+          dictionary_length
+          compression_level
+      in
+      compress ~f ~input ~output)
   ;;
 
   let decompress t ~dictionary ~input ~output =
-    let decompression_ctx = Decompression_context.get_exn t in
-    let dictionary_length = Input.length dictionary |> Unsigned.Size_t.of_int in
-    let dictionary_ptr = Input.ptr dictionary in
-    let f output_ptr output_length input_ptr input_length =
-      Raw.Simple_dictionary.decompress_usingDict
-        decompression_ctx
-        output_ptr
-        output_length
-        input_ptr
-        input_length
-        dictionary_ptr
-        dictionary_length
-    in
-    decompress_with_frame_length_check ~f ~input ~output
+    Decompression_context.with_exn t (fun decompression_ctx ->
+      let dictionary_length = Input.length dictionary |> Unsigned.Size_t.of_int in
+      let dictionary_ptr = Input.ptr dictionary in
+      let f output_ptr output_length input_ptr input_length =
+        Raw.Simple_dictionary.decompress_usingDict
+          decompression_ctx
+          output_ptr
+          output_length
+          input_ptr
+          input_length
+          dictionary_ptr
+          dictionary_length
+      in
+      decompress_with_frame_length_check ~f ~input ~output)
   ;;
 end
 
@@ -563,6 +612,23 @@ module Bulk_processing_dictionary = struct
       ; mutable freed : bool
       }
 
+    let free = function
+      | t when t.freed -> ()
+      | t ->
+        t.freed <- true;
+        let (_ : Unsigned.size_t) =
+          Raw.Bulk_processing_dictionary.Compression.free t.ctx |> raise_on_error
+        in
+        ()
+    ;;
+
+    let with_exn t f =
+      raise_if_already_freed t.freed "Bulk processing dictionary context";
+      let result = f t.ctx in
+      Gc.keep_alive t;
+      result
+    ;;
+
     let create ~dictionary ~compression_level : t =
       let dictionary_length = Input.length dictionary |> Unsigned.Size_t.of_int in
       let dictionary_ptr = Input.ptr dictionary in
@@ -572,35 +638,24 @@ module Bulk_processing_dictionary = struct
           dictionary_length
           compression_level
       in
-      { ctx; input_to_prevent_gc = dictionary; freed = false }
-    ;;
-
-    let free t =
-      raise_if_already_freed t.freed "Bulk processing dictionary context";
-      let (_ : Unsigned.size_t) =
-        Raw.Bulk_processing_dictionary.Compression.free t.ctx |> raise_on_error
-      in
-      t.freed <- true
-    ;;
-
-    let get_exn t =
-      raise_if_already_freed t.freed "Bulk processing dictionary context";
-      t.ctx
+      let t = { ctx; input_to_prevent_gc = dictionary; freed = false } in
+      Gc.Expert.add_finalizer_exn t free;
+      t
     ;;
 
     let compress t ~context ~input ~output =
-      let processing_ctx = get_exn t in
-      let compression_ctx = Compression_context.get_exn context in
-      let f output_ptr output_length input_ptr input_length =
-        Raw.Bulk_processing_dictionary.Compression.compress
-          compression_ctx
-          output_ptr
-          output_length
-          input_ptr
-          input_length
-          processing_ctx
-      in
-      compress ~f ~input ~output
+      with_exn t (fun processing_ctx ->
+        Compression_context.with_exn context (fun compression_ctx ->
+          let f output_ptr output_length input_ptr input_length =
+            Raw.Bulk_processing_dictionary.Compression.compress
+              compression_ctx
+              output_ptr
+              output_length
+              input_ptr
+              input_length
+              processing_ctx
+          in
+          compress ~f ~input ~output))
     ;;
   end
 
@@ -611,6 +666,16 @@ module Bulk_processing_dictionary = struct
       ; mutable freed : bool
       }
 
+    let free = function
+      | t when t.freed -> ()
+      | t ->
+        t.freed <- true;
+        let (_ : Unsigned.size_t) =
+          Raw.Bulk_processing_dictionary.Decompression.free t.ctx |> raise_on_error
+        in
+        ()
+    ;;
+
     let create ~dictionary : t =
       let dictionary_length = Input.length dictionary |> Unsigned.Size_t.of_int in
       let dictionary_ptr = Input.ptr dictionary in
@@ -619,35 +684,31 @@ module Bulk_processing_dictionary = struct
           dictionary_ptr
           dictionary_length
       in
-      { ctx; input_to_prevent_gc = dictionary; freed = false }
+      let t = { ctx; input_to_prevent_gc = dictionary; freed = false } in
+      Gc.Expert.add_finalizer_exn t free;
+      t
     ;;
 
-    let free t =
-      let (_ : Unsigned.size_t) =
-        Raw.Bulk_processing_dictionary.Decompression.free t.ctx |> raise_on_error
-      in
-      t.freed <- true;
-      ()
-    ;;
-
-    let get_exn t =
+    let with_exn t f =
       raise_if_already_freed t.freed "Bulk processing dictionary context";
-      t.ctx
+      let result = f t.ctx in
+      Gc.keep_alive t;
+      result
     ;;
 
     let decompress t ~context ~input ~output =
-      let processing_ctx = get_exn t in
-      let decompression_ctx = Decompression_context.get_exn context in
-      let f output_ptr output_length input_ptr input_length =
-        Raw.Bulk_processing_dictionary.Decompression.decompress
-          decompression_ctx
-          output_ptr
-          output_length
-          input_ptr
-          input_length
-          processing_ctx
-      in
-      decompress_with_frame_length_check ~f ~input ~output
+      with_exn t (fun processing_ctx ->
+        Decompression_context.with_exn context (fun decompression_ctx ->
+          let f output_ptr output_length input_ptr input_length =
+            Raw.Bulk_processing_dictionary.Decompression.decompress
+              decompression_ctx
+              output_ptr
+              output_length
+              input_ptr
+              input_length
+              processing_ctx
+          in
+          decompress_with_frame_length_check ~f ~input ~output))
     ;;
   end
 end
