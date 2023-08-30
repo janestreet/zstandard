@@ -167,13 +167,13 @@ module Dictionary : sig
         { k : int (** Segment size : constraint: 0 < k : Reasonable range [16, 2048+] *)
         ; d : int (** dmer size : constraint: 0 < d <= k : Reasonable range [6, 16] *)
         ; steps : int
-        (** Number of steps : Only used for optimization : 0 means default (40) : Higher
+            (** Number of steps : Only used for optimization : 0 means default (40) : Higher
             means more parameters checked *)
         ; nb_threads : int
-        (** Number of threads : constraint: 0 < nbThreads : 1 means single-threaded : Only
+            (** Number of threads : constraint: 0 < nbThreads : 1 means single-threaded : Only
             used for optimization : Ignored if ZSTD_MULTITHREAD is not defined *)
         ; split_point : float
-        (** Percentage of samples used for training: Only used for optimization : the first
+            (** Percentage of samples used for training: Only used for optimization : the first
             nbSamples * splitPoint samples will be used to training, the last nbSamples *
             (1 - splitPoint) samples will be used for testing, 0 means default (1.0), 1.0
             when all samples are used for both training and testing *)
@@ -188,31 +188,31 @@ module Dictionary : sig
         { k : int (** Segment size : constraint: 0 < k : Reasonable range [16, 2048+] *)
         ; d : int (** dmer size : constraint: 0 < d <= k : Reasonable range [6, 16] *)
         ; f : int
-        (** log of size of frequency array : constraint: 0 < f <= 31 : 1 means default(20)*)
+            (** log of size of frequency array : constraint: 0 < f <= 31 : 1 means default(20)*)
         ; steps : int
-        (** Number of steps : Only used for optimization : 0 means default (40) : Higher
+            (** Number of steps : Only used for optimization : 0 means default (40) : Higher
             means more parameters checked *)
         ; nb_threads : int
-        (** Number of threads : constraint: 0 < nbThreads : 1 means single-threaded : Only
+            (** Number of threads : constraint: 0 < nbThreads : 1 means single-threaded : Only
             used for optimization : Ignored if ZSTD_MULTITHREAD is not defined *)
         ; split_point : float
-        (** Percentage of samples used for training: Only used for optimization : the first
+            (** Percentage of samples used for training: Only used for optimization : the first
             nbSamples * splitPoint samples will be used to training, the last nbSamples *
             (1 - splitPoint) samples will be used for testing, 0 means default (0.75), 1.0
             when all samples are used for both training and testing *)
         ; accel : int
-        (** Acceleration level: constraint: 0 < accel <= 10, higher means faster and less
+            (** Acceleration level: constraint: 0 < accel <= 10, higher means faster and less
             accurate, 0 means default(1) *)
         }
     end
 
     type t =
       | Default
-      (** Invokes the fast cover algorithm with reasonable default parameters. Versions of
+          (** Invokes the fast cover algorithm with reasonable default parameters. Versions of
           zstd <= 1.3.5 used the cover algorithm.*)
       | Cover of Cover.t (** Slower, higher quality generator. *)
       | Fast_cover of Fast_cover.t
-      (** The new builder, named fastcover, is about 10x faster than the previous default
+          (** The new builder, named fastcover, is about 10x faster than the previous default
           generator, cover, while suffering only negligible accuracy losses (<1%). It's
           effectively an approximative version of cover, which throws away accuracy for the
           benefit of speed and memory. This is zstd's default. Slower but higher quality
@@ -233,7 +233,6 @@ module Dictionary : sig
     -> string array
     -> 'a Output.t
     -> 'a Or_error.t
-
 end
 
 module Simple_dictionary : sig
