@@ -1,3 +1,8 @@
-(library (name zstd_bindings) (public_name zstandard.bindings)
- (libraries ctypes ctypes.stubs) (modules zstd_bindings)
- (virtual_deps conf-zstd) (preprocess (pps ppx_jane)))
+(library
+ (name zstd_bindings)
+ (public_name zstandard.bindings)
+ (libraries ctypes ctypes.stubs)
+ (modules zstd_bindings)
+ (virtual_deps conf-zstd)
+ (preprocess
+  (pps ppx_jane)))

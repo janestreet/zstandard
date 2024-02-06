@@ -1,8 +1,20 @@
-(library (name zstandard) (public_name zstandard) (c_names zstd_stubs)
- (c_flags (:standard \ -Werror -pedantic -Wall -Wunused) -w)
+(library
+ (foreign_stubs
+  (language c)
+  (names zstd_stubs)
+  (flags
+   (:standard \ -Werror -pedantic -Wall -Wunused)
+   -w))
+ (name zstandard)
+ (public_name zstandard)
  (c_library_flags :standard -lzstd)
  (libraries core core_kernel.iobuf zstd_bindings ctypes.stubs ctypes)
- (preprocess (pps ppx_jane)))
+ (preprocess
+  (pps ppx_jane)))
 
-(rule (targets zstd_generated.ml zstd_stubs.c)
- (deps (:first_dep ../gen/zstd_gen.exe)) (action (bash ./%{first_dep})))
+(rule
+ (targets zstd_generated.ml zstd_stubs.c)
+ (deps
+  (:first_dep ../gen/zstd_gen.exe))
+ (action
+  (bash ./%{first_dep})))

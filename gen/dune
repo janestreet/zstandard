@@ -1,2 +1,6 @@
-(executables (names zstd_gen) (libraries zstd_bindings ctypes ctypes.stubs)
- (preprocess (pps ppx_jane)))
+(executables
+ (modes byte exe)
+ (names zstd_gen)
+ (libraries zstd_bindings ctypes ctypes.stubs)
+ (preprocess
+  (pps ppx_jane)))
