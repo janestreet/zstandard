@@ -17,6 +17,7 @@ depends: [
   "conf-zstd"
   "ctypes"      {>= "0.18.0"}
   "dune"        {>= "3.11.0"}
+  "integers"
 ]
 synopsis: "OCaml bindings to Zstandard"
 description: "

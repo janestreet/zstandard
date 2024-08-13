@@ -8,7 +8,7 @@
  (name zstandard)
  (public_name zstandard)
  (c_library_flags :standard -lzstd)
- (libraries core core_kernel.iobuf zstd_bindings ctypes.stubs ctypes)
+ (libraries core core_kernel.iobuf zstd_bindings ctypes.stubs ctypes integers)
  (preprocess
   (pps ppx_jane)))
 
