@@ -88,7 +88,7 @@ end = struct
 
   let create () : t =
     let t = { ptr = Raw.Context.Compression.create (); freed = false } in
-    Gc.Expert.add_finalizer_exn t free;
+    Gc.Expert.add_finalizer_ignore t free;
     t
   ;;
 
@@ -124,7 +124,7 @@ end = struct
 
   let create () : t =
     let t = { ptr = Raw.Context.Decompression.create (); freed = false } in
-    Gc.Expert.add_finalizer_exn t free;
+    Gc.Expert.add_finalizer_ignore t free;
     t
   ;;
 
@@ -357,7 +357,7 @@ module Streaming = struct
     let create compress_level =
       let t = { cctx = create (); freed = false } in
       let (_ : Unsigned.size_t) = init t.cctx compress_level |> raise_on_error in
-      Gc.Expert.add_finalizer_exn t free;
+      Gc.Expert.add_finalizer_ignore t free;
       t
     ;;
 
@@ -433,7 +433,7 @@ module Streaming = struct
     let create () =
       let t = { dctx = create (); freed = false } in
       let (_ : Unsigned.size_t) = init t.dctx |> raise_on_error in
-      Gc.Expert.add_finalizer_exn t free;
+      Gc.Expert.add_finalizer_ignore t free;
       t
     ;;
 
@@ -639,7 +639,7 @@ module Bulk_processing_dictionary = struct
           compression_level
       in
       let t = { ctx; input_to_prevent_gc = dictionary; freed = false } in
-      Gc.Expert.add_finalizer_exn t free;
+      Gc.Expert.add_finalizer_ignore t free;
       t
     ;;
 
@@ -685,7 +685,7 @@ module Bulk_processing_dictionary = struct
           dictionary_length
       in
       let t = { ctx; input_to_prevent_gc = dictionary; freed = false } in
-      Gc.Expert.add_finalizer_exn t free;
+      Gc.Expert.add_finalizer_ignore t free;
       t
     ;;
 
