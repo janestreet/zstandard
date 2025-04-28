@@ -1,3 +1,4 @@
+module Ctypes = Ctypes [@@alert "-deprecated"]
 open Ctypes
 
 module C (F : Cstubs.FOREIGN) = struct
