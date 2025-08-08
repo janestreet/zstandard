@@ -142,12 +142,12 @@ module Output = struct
       | In_buffer : int t
       | In_iobuf : (read_write, Iobuf.seek) Iobuf.t -> unit t
       | Allocate_string : Bigstring.t -> string t
-      | Allocate_bigstring : Bigstring.t -> Bigstring.t t
+      | Allocate_bigstring : (Bigstring.t[@globalized]) -> Bigstring.t t
   end
 
   type 'a t =
     | In_buffer :
-        { buffer : Bigstring.t
+        { buffer : Bigstring.t [@globalized]
         ; pos : int
         ; len : int
         }
@@ -156,79 +156,112 @@ module Output = struct
     | Allocate_string : { size_limit : int option } -> string t
     | Allocate_bigstring : { size_limit : int option } -> Bigstring.t t
 
+  [%%template
+  [@@@alloc.default a @ m = (heap @ global, stack @ local)]
+
   let in_buffer ?(pos = 0) ?len buffer =
     let len =
       match len with
       | Some len -> len
       | None -> Bigstring.length buffer - pos
     in
-    In_buffer { buffer; pos; len }
+    In_buffer { buffer; pos; len } [@exclave_if_stack a]
   ;;
 
-  let in_iobuf iobuf = In_iobuf { iobuf }
-  let allocate_string ~size_limit = Allocate_string { size_limit }
-  let allocate_bigstring ~size_limit = Allocate_bigstring { size_limit }
+  let in_iobuf iobuf = In_iobuf { iobuf } [@exclave_if_stack a]
+  let allocate_string ~size_limit = Allocate_string { size_limit } [@exclave_if_stack a]
+
+  let allocate_bigstring ~size_limit =
+    Allocate_bigstring { size_limit } [@exclave_if_stack a]
+  ;;]
 
   let has_capacity (type a) (t : a t) size =
     match t with
     | Allocate_string { size_limit } ->
-      Option.value_map size_limit ~default:true ~f:(fun size_limit -> size <= size_limit)
+      (Option.value_map [@mode local]) size_limit ~default:true ~f:(fun size_limit ->
+        size <= size_limit)
     | Allocate_bigstring { size_limit } ->
-      Option.value_map size_limit ~default:true ~f:(fun size_limit -> size <= size_limit)
+      (Option.value_map [@mode local]) size_limit ~default:true ~f:(fun size_limit ->
+        size <= size_limit)
     | In_buffer { len; _ } -> size <= len
     | In_iobuf { iobuf } -> size <= Iobuf.length iobuf
   ;;
 
-  let prepare (type a) (t : a t) size : _ * _ * a Allocated.t =
+  module Prepared = struct
+    type 'a t =
+      { ptr : unit ptr [@globalized]
+      ; size : Unsigned.size_t [@globalized]
+      ; prepared : 'a Allocated.t
+      }
+  end
+
+  let prepare (type a) (t : a t) size : a Prepared.t =
     if has_capacity t size then () else raise (Not_enough_capacity size);
     let size_t = Unsigned.Size_t.of_int size in
     match t with
     | Allocate_string _ ->
       let buffer = Bigstring.create size in
-      ( Ctypes.to_voidp (Ctypes.bigarray_start Array1 buffer)
-      , size_t
-      , Allocated.Allocate_string buffer )
+      { ptr = Ctypes.to_voidp (Ctypes.bigarray_start Array1 buffer)
+      ; size = size_t
+      ; prepared = Allocate_string buffer
+      }
     | Allocate_bigstring _ ->
       let buffer = Bigstring.create size in
-      ( Ctypes.to_voidp (Ctypes.bigarray_start Array1 buffer)
-      , size_t
-      , Allocated.Allocate_bigstring buffer )
+      { ptr = Ctypes.to_voidp (Ctypes.bigarray_start Array1 buffer)
+      ; size = size_t
+      ; prepared = Allocate_bigstring buffer
+      }
     | In_buffer { buffer; pos; len } ->
-      ( Ctypes.to_voidp (Ctypes.bigarray_start Array1 buffer +@ pos)
-      , Unsigned.Size_t.of_int len
-      , Allocated.In_buffer )
+      { ptr = Ctypes.to_voidp (Ctypes.bigarray_start Array1 buffer +@ pos)
+      ; size = Unsigned.Size_t.of_int len
+      ; prepared = In_buffer
+      }
     | In_iobuf { iobuf } ->
-      ( Ctypes.to_voidp (ptr_to_start_of_iobuf_window iobuf)
-      , Unsigned.Size_t.of_int (Iobuf.length iobuf)
-      , Allocated.In_iobuf iobuf )
+      { ptr = Ctypes.to_voidp (ptr_to_start_of_iobuf_window iobuf)
+      ; size = Unsigned.Size_t.of_int (Iobuf.length iobuf)
+      ; prepared = In_iobuf iobuf
+      }
   ;;
 
   let return_exn (type a) (t : a Allocated.t) ~(size_or_error : Unsigned.Size_t.t) : a =
     let size_t = raise_on_error size_or_error in
     let size = Unsigned.Size_t.to_int size_t in
     match t with
-    | Allocated.Allocate_string buffer -> Bigstring.to_string ~len:size buffer
-    | Allocated.Allocate_bigstring buffer ->
-      Bigstring.unsafe_destroy_and_resize ~len:size buffer
-    | Allocated.In_buffer -> size
-    | Allocated.In_iobuf iobuf -> Iobuf.resize ~len:size iobuf
+    | Allocate_string buffer -> Bigstring.to_string ~len:size buffer
+    | Allocate_bigstring buffer -> Bigstring.unsafe_destroy_and_resize ~len:size buffer
+    | In_buffer -> size
+    | In_iobuf iobuf -> Iobuf.resize ~len:size iobuf
   ;;
 
   let return_or_error t ~size_or_error =
-    Or_error.try_with (fun () -> return_exn t ~size_or_error)
+    Or_error.try_with (fun () -> return_exn t ~size_or_error) [@nontail]
   ;;
 end
 
 module Input = struct
   type t = (read, Iobuf.no_seek) Iobuf.t
 
-  let from_bigstring ?pos ?len buf = Iobuf.of_bigstring ?pos ?len buf
-  let from_iobuf iobuf = Iobuf.read_only (Iobuf.no_seek iobuf)
-  let from_bytes ?pos ?len s : t = from_bigstring (Bigstring.of_bytes ?pos ?len s)
+  [%%template
+  [@@@alloc.default a @ m = (heap @ global, stack @ local)]
+
+  let from_bigstring ?pos ?len buf =
+    (Iobuf.of_bigstring [@alloc a]) ?pos ?len buf [@exclave_if_stack a]
+  ;;
+
+  let from_iobuf iobuf =
+    (Iobuf.read_only [@mode m]) ((Iobuf.no_seek [@mode m]) iobuf) [@exclave_if_stack a]
+  ;;
+
+  let from_bytes ?pos ?len s : t =
+    (from_bigstring [@alloc a]) (Bigstring.of_bytes ?pos ?len s) [@exclave_if_stack a]
+  ;;
 
   let from_string ?pos ?len s : t =
-    from_bytes ?pos ?len (Bytes.unsafe_of_string_promise_no_mutation s)
-  ;;
+    (from_bytes [@alloc a])
+      ?pos
+      ?len
+      (Bytes.unsafe_of_string_promise_no_mutation s) [@exclave_if_stack a]
+  ;;]
 
   let length = Iobuf.length
   let ptr t : _ ptr = Ctypes.to_voidp (ptr_to_start_of_iobuf_window t)
@@ -244,9 +277,11 @@ let compress ~f ~input ~output =
   let input_length = Input.length input |> Unsigned.Size_t.of_int in
   let input_ptr = Input.ptr input in
   let size = Raw.compressBound input_length in
-  let ptr, size, prepared = Output.prepare output (Unsigned.Size_t.to_int size) in
+  let%tydi { ptr; size; prepared } =
+    Output.prepare output (Unsigned.Size_t.to_int size)
+  in
   let size_or_error = f ptr size input_ptr input_length in
-  Output.return_exn prepared ~size_or_error
+  Output.return_exn prepared ~size_or_error [@nontail]
 ;;
 
 let decompress_with_frame_length_check ~f ~input ~output =
@@ -256,11 +291,13 @@ let decompress_with_frame_length_check ~f ~input ~output =
   if Int64.(Int.(max_value |> to_int64) < frame_content_size)
   then raise (Decompressed_size_exceeds_max_int frame_content_size);
   let frame_content_size = Int64.to_int_exn frame_content_size in
-  let output_ptr, output_length, prepared = Output.prepare output frame_content_size in
+  let%tydi { ptr = output_ptr; size = output_length; prepared } =
+    Output.prepare output frame_content_size
+  in
   let size_or_error =
     f output_ptr output_length input_ptr (input_length |> Unsigned.Size_t.of_int)
   in
-  Output.return_exn prepared ~size_or_error
+  Output.return_exn prepared ~size_or_error [@nontail]
 ;;
 
 module With_explicit_context = struct
@@ -276,6 +313,7 @@ module With_explicit_context = struct
           compression_level
       in
       compress ~f ~input ~output)
+    [@nontail]
   ;;
 
   let decompress (t : Decompression_context.t) ~input ~output =
@@ -289,6 +327,7 @@ module With_explicit_context = struct
           input_length
       in
       decompress_with_frame_length_check ~input ~output ~f)
+    [@nontail]
   ;;
 end
 
@@ -525,7 +564,9 @@ module Dictionary = struct
   open Training_algorithm
 
   let train ?(dict_size = 102400) ?(training_algorithm = Default) strings return =
-    let dict_buffer, dict_length, prepared = Output.prepare return dict_size in
+    let%tydi { ptr = dict_buffer; size = dict_length; prepared } =
+      Output.prepare return dict_size
+    in
     let total_size = Array.fold strings ~init:0 ~f:(fun acc s -> acc + String.length s) in
     let samples_buffer = Bigstring.create total_size in
     let sizes = Ctypes.CArray.make Ctypes.size_t (Array.length strings) in
@@ -563,7 +604,7 @@ module Dictionary = struct
           nb_strings
           cover
     in
-    Output.return_or_error prepared ~size_or_error
+    Output.return_or_error prepared ~size_or_error [@nontail]
   ;;
 end
 
@@ -584,6 +625,7 @@ module Simple_dictionary = struct
           compression_level
       in
       compress ~f ~input ~output)
+    [@nontail]
   ;;
 
   let decompress t ~dictionary ~input ~output =
@@ -601,6 +643,7 @@ module Simple_dictionary = struct
           dictionary_length
       in
       decompress_with_frame_length_check ~f ~input ~output)
+    [@nontail]
   ;;
 end
 
@@ -655,7 +698,9 @@ module Bulk_processing_dictionary = struct
               input_length
               processing_ctx
           in
-          compress ~f ~input ~output))
+          compress ~f ~input ~output)
+        [@nontail])
+      [@nontail]
     ;;
   end
 
@@ -708,7 +753,9 @@ module Bulk_processing_dictionary = struct
               input_length
               processing_ctx
           in
-          decompress_with_frame_length_check ~f ~input ~output))
+          decompress_with_frame_length_check ~f ~input ~output)
+        [@nontail])
+      [@nontail]
     ;;
   end
 end

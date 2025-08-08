@@ -63,6 +63,9 @@ module Output : sig
       functions into the OCaml world. *)
   type 'a t
 
+  [%%template:
+  [@@@alloc.default __ @ m = (heap @ global, stack @ local)]
+
   (** Passing [in_buffer s ~pos ~len] to Zstd functions will cause them to output their
       result in the buffer [s.(pos) ... s.(pos+len)], and return the actual length that
       was used. *)
@@ -78,7 +81,7 @@ module Output : sig
 
   (** Passing [allocate_bigstring] to Zstd functions will cause them to allocate an ocaml
       string to contain their result. *)
-  val allocate_bigstring : size_limit:int option -> Bigstring.t t
+  val allocate_bigstring : size_limit:int option -> Bigstring.t t]
 end
 
 module Input : sig
@@ -86,6 +89,9 @@ module Input : sig
       strings. The [t] type encodes the various ways to pass a string from the OCaml world
       to ZStd functions. *)
   type t
+
+  [%%template:
+  [@@@alloc.default __ @ m = (heap @ global, stack @ local)]
 
   (** [from_string ?pos ?len s] will pass the content of [s] to Zstd functions. This
       incurs a copy of the OCaml string when [from_string] is called. *)
@@ -103,7 +109,7 @@ module Input : sig
 
   (** [from_iobuf iobuf] will pass the content of [iobuf] to Zstd functions. This does not
       incur a copy. *)
-  val from_iobuf : ([> read ], _) Iobuf.t -> t
+  val from_iobuf : ([> read ], _) Iobuf.t -> t]
 end
 
 (** Returns the decompressed size of a message. Since decompressed size is an optional
