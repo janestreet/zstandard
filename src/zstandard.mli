@@ -17,8 +17,7 @@ open Core
     - a single step (described as Simple dictionary API)
     - a single step, reusing a dictionary (described as Bulk-processing dictionary API)
 
-    Also see LZ4.
-*)
+    Also see LZ4. *)
 
 exception Error of string
 
@@ -29,7 +28,7 @@ exception Error of string
     when using a single-pass function such as [Simple.compress],
     [With_explicit_content.comprss], [Simple_dictionary.compress] and
     [With_bulk_dictionary.compress]. If the decompressed size is not present in the
-    message, it might be necessary to use streaming mode to decompress the message.*)
+    message, it might be necessary to use streaming mode to decompress the message. *)
 exception Content_size_unknown
 
 (** Might be raised when decompressing a message using a single pass decompression
@@ -51,8 +50,8 @@ exception Decompressed_size_exceeds_max_int of Int64.t
 (** Returns the max possible value for [compression_level] *)
 val max_compression_level : unit -> int
 
-(** [compression_output_size_bound x] is the maximum possible output size when doing a
-    a single-pass compression of an input of size [x].
+(** [compression_output_size_bound x] is the maximum possible output size when doing a a
+    single-pass compression of an input of size [x].
 
     (Single pass means something like [Simple.compress]; maximum possible means the worst
     case of the compression algorithm.). *)
@@ -64,22 +63,25 @@ module Output : sig
       functions into the OCaml world. *)
   type 'a t
 
+  [%%template:
+  [@@@alloc.default __ @ m = (heap @ global, stack @ local)]
+
   (** Passing [in_buffer s ~pos ~len] to Zstd functions will cause them to output their
       result in the buffer [s.(pos) ... s.(pos+len)], and return the actual length that
       was used. *)
-  val in_buffer : ?pos:int -> ?len:int -> Bigstring.t -> int t
+  val in_buffer : ?pos:int -> ?len:int -> Bigstring.t -> int t @ m
 
   (** Passing [in_buffer iobuf] to Zstd functions will cause them to output their result
       in the iobuf. *)
-  val in_iobuf : (read_write, Iobuf.seek) Iobuf.t -> unit t
+  val in_iobuf : (read_write, Iobuf.seek) Iobuf.t @ m -> unit t @ m
 
   (** Passing [allocate_string] to Zstd functions will cause them to allocate an ocaml
       string to contain their result. *)
-  val allocate_string : size_limit:int option -> string t
+  val allocate_string : size_limit:int option -> string t @ m
 
   (** Passing [allocate_bigstring] to Zstd functions will cause them to allocate an ocaml
       string to contain their result. *)
-  val allocate_bigstring : size_limit:int option -> Bigstring.t t
+  val allocate_bigstring : size_limit:int option -> Bigstring.t t @ m]
 end
 
 module Input : sig
@@ -88,37 +90,40 @@ module Input : sig
       to ZStd functions. *)
   type t
 
+  [%%template:
+  [@@@alloc.default __ @ m = (heap @ global, stack @ local)]
+
   (** [from_string ?pos ?len s] will pass the content of [s] to Zstd functions. This
       incurs a copy of the OCaml string when [from_string] is called. *)
-  val from_string : ?pos:int -> ?len:int -> string -> t
+  val from_string : ?pos:int -> ?len:int -> string @ m -> t @ m
 
   (** [from_bytes ?pos ?len s] will pass the content of [s] to Zstd functions. This incurs
       an allocation of a buffer of size [len] when calling [from_bytes], and a copy of the
       ocaml bytes each time the resulting [t] is used by a compression / decompression
       function. *)
-  val from_bytes : ?pos:int -> ?len:int -> Bytes.t -> t
+  val from_bytes : ?pos:int -> ?len:int -> Bytes.t @ m -> t @ m
 
   (** [from_bigstring ?pos ?len s] will pass the content of [s] between [pos] and
       [pos+len] to Zstd functions. This does not incur a copy. *)
-  val from_bigstring : ?pos:int -> ?len:int -> Bigstring.t -> t
+  val from_bigstring : ?pos:int -> ?len:int -> Bigstring.t -> t @ m
 
-  (** [from_iobuf iobuf] will pass the content of [iobuf] to Zstd functions. This
-      does not incur a copy. *)
-  val from_iobuf : ([> read ], _) Iobuf.t -> t
+  (** [from_iobuf iobuf] will pass the content of [iobuf] to Zstd functions. This does not
+      incur a copy. *)
+  val from_iobuf : ([> read ], _) Iobuf.t @ m -> t @ m]
 end
 
 (** Returns the decompressed size of a message. Since decompressed size is an optional
     field of compressed message, it might raise [Content_size_unknown],
     [Content_size_error] or [Error]. *)
-val decompressed_size : Input.t -> Int64.t
+val decompressed_size : local_ Input.t -> Int64.t
 
 module Compression_context : sig
   type t
 
   val create : unit -> t
 
-  (** [free t] deallocate the underlying datastructure. Subsequent uses of [t] will
-      cause exceptions. *)
+  (** [free t] deallocate the underlying datastructure. Subsequent uses of [t] will cause
+      exceptions. *)
   val free : t -> unit
 end
 
@@ -127,18 +132,21 @@ module Decompression_context : sig
 
   val create : unit -> t
 
-  (** [free t] deallocate the underlying datastructure. Subsequent uses of [t] will
-      cause exceptions. *)
+  (** [free t] deallocate the underlying datastructure. Subsequent uses of [t] will cause
+      exceptions. *)
   val free : t -> unit
 end
 
 module Simple : sig
   (** Compresses [input] as a single frame. Raises an [Error] in case of failure. *)
-  val compress : compression_level:int -> input:Input.t -> output:'a Output.t -> 'a
+  val compress
+    :  compression_level:int
+    -> input:local_ Input.t
+    -> output:local_ 'a Output.t
+    -> 'a
 
-  (**  [input] should contain an exact number of frames.
-       Raises [Error] in case of failure. *)
-  val decompress : input:Input.t -> output:'a Output.t -> 'a
+  (** [input] should contain an exact number of frames. Raises [Error] in case of failure. *)
+  val decompress : input:local_ Input.t -> output:local_ 'a Output.t -> 'a
 end
 
 module With_explicit_context : sig
@@ -151,13 +159,16 @@ module With_explicit_context : sig
   val compress
     :  Compression_context.t
     -> compression_level:int
-    -> input:Input.t
-    -> output:'a Output.t
+    -> input:local_ Input.t
+    -> output:local_ 'a Output.t
     -> 'a
 
-  (** [input] should contain an exact number of frames.
-      Raises [Error] in case of failure. *)
-  val decompress : Decompression_context.t -> input:Input.t -> output:'a Output.t -> 'a
+  (** [input] should contain an exact number of frames. Raises [Error] in case of failure. *)
+  val decompress
+    :  Decompression_context.t
+    -> input:local_ Input.t
+    -> output:local_ 'a Output.t
+    -> 'a
 end
 
 module Dictionary : sig
@@ -173,10 +184,10 @@ module Dictionary : sig
         (** Number of threads : constraint: 0 < nbThreads : 1 means single-threaded : Only
             used for optimization : Ignored if ZSTD_MULTITHREAD is not defined *)
         ; split_point : float
-        (** Percentage of samples used for training: Only used for optimization : the first
-            nbSamples * splitPoint samples will be used to training, the last nbSamples *
-            (1 - splitPoint) samples will be used for testing, 0 means default (1.0), 1.0
-            when all samples are used for both training and testing *)
+        (** Percentage of samples used for training: Only used for optimization : the
+            first nbSamples * splitPoint samples will be used to training, the last
+            nbSamples * (1 - splitPoint) samples will be used for testing, 0 means default
+            (1.0), 1.0 when all samples are used for both training and testing *)
         }
 
       (** Some default, reasonable, value for the parameters *)
@@ -188,7 +199,7 @@ module Dictionary : sig
         { k : int (** Segment size : constraint: 0 < k : Reasonable range [16, 2048+] *)
         ; d : int (** dmer size : constraint: 0 < d <= k : Reasonable range [6, 16] *)
         ; f : int
-        (** log of size of frequency array : constraint: 0 < f <= 31 : 1 means default(20)*)
+        (** log of size of frequency array : constraint: 0 < f <= 31 : 1 means default(20) *)
         ; steps : int
         (** Number of steps : Only used for optimization : 0 means default (40) : Higher
             means more parameters checked *)
@@ -196,10 +207,10 @@ module Dictionary : sig
         (** Number of threads : constraint: 0 < nbThreads : 1 means single-threaded : Only
             used for optimization : Ignored if ZSTD_MULTITHREAD is not defined *)
         ; split_point : float
-        (** Percentage of samples used for training: Only used for optimization : the first
-            nbSamples * splitPoint samples will be used to training, the last nbSamples *
-            (1 - splitPoint) samples will be used for testing, 0 means default (0.75), 1.0
-            when all samples are used for both training and testing *)
+        (** Percentage of samples used for training: Only used for optimization : the
+            first nbSamples * splitPoint samples will be used to training, the last
+            nbSamples * (1 - splitPoint) samples will be used for testing, 0 means default
+            (0.75), 1.0 when all samples are used for both training and testing *)
         ; accel : int
         (** Acceleration level: constraint: 0 < accel <= 10, higher means faster and less
             accurate, 0 means default(1) *)
@@ -209,14 +220,14 @@ module Dictionary : sig
     type t =
       | Default
       (** Invokes the fast cover algorithm with reasonable default parameters. Versions of
-          zstd <= 1.3.5 used the cover algorithm.*)
+          zstd <= 1.3.5 used the cover algorithm. *)
       | Cover of Cover.t (** Slower, higher quality generator. *)
       | Fast_cover of Fast_cover.t
       (** The new builder, named fastcover, is about 10x faster than the previous default
           generator, cover, while suffering only negligible accuracy losses (<1%). It's
-          effectively an approximative version of cover, which throws away accuracy for the
-          benefit of speed and memory. This is zstd's default. Slower but higher quality
-          generator remains accessible using [Cover]. *)
+          effectively an approximative version of cover, which throws away accuracy for
+          the benefit of speed and memory. This is zstd's default. Slower but higher
+          quality generator remains accessible using [Cover]. *)
   end
 
   (** [train ?dict_size strings] trains a dictionary from an array of samples. [dict_size]
@@ -240,15 +251,15 @@ module Simple_dictionary : sig
     :  Compression_context.t
     -> compression_level:int
     -> dictionary:Input.t
-    -> input:Input.t
-    -> output:'a Output.t
+    -> input:local_ Input.t
+    -> output:local_ 'a Output.t
     -> 'a
 
   val decompress
     :  Decompression_context.t
     -> dictionary:Input.t
-    -> input:Input.t
-    -> output:'a Output.t
+    -> input:local_ Input.t
+    -> output:local_ 'a Output.t
     -> 'a
 end
 
@@ -265,8 +276,8 @@ module Bulk_processing_dictionary : sig
     val compress
       :  t
       -> context:Compression_context.t
-      -> input:Input.t
-      -> output:'a Output.t
+      -> input:local_ Input.t
+      -> output:local_ 'a Output.t
       -> 'a
   end
 
@@ -282,8 +293,8 @@ module Bulk_processing_dictionary : sig
     val decompress
       :  t
       -> context:Decompression_context.t
-      -> input:Input.t
-      -> output:'a Output.t
+      -> input:local_ Input.t
+      -> output:local_ 'a Output.t
       -> 'a
   end
 end
@@ -297,8 +308,7 @@ module Streaming : sig
       data in the output buffers. It might be necessary to call compress / decompress
       multiple times to consume the entire input buffer. Note that if there is not enough
       space left in the output buffer, calling compress / decompress will not consume any
-      input. It's the duty of the caller to check if the input has been entirely consumed.
-  *)
+      input. It's the duty of the caller to check if the input has been entirely consumed. *)
 
   module Compression : sig
     type t
@@ -328,14 +338,14 @@ module Streaming : sig
         cause exceptions. *)
     val free : t -> unit
 
-    (** The recommended length for [inbuf].  Other sizes will work fine, but zstd
+    (** The recommended length for [inbuf]. Other sizes will work fine, but zstd
         compresses a single block all at once instead of incrementally, so providing less
         data than this will result in the data being stored inside [t] until enough data
         is provided or [flush] is called *)
     val recommended_inbuf_length : unit -> int
 
-    (** The recommended length for [outbuf].  This is guaranteed to be enough to store any
-        single compressed block.  As, other sizes will work fine, but smaller sizes may
+    (** The recommended length for [outbuf]. This is guaranteed to be enough to store any
+        single compressed block. As, other sizes will work fine, but smaller sizes may
         result in multiple calls to [compress] or [flush] than necessary, and larger
         buffers will use more memory. *)
     val recommended_outbuf_length : unit -> int
