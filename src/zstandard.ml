@@ -140,7 +140,7 @@ module Output = struct
   module Allocated = struct
     type 'a t =
       | In_buffer : int t
-      | In_iobuf : (read_write, Iobuf.seek) Iobuf.t -> unit t
+      | In_iobuf : (read_write, Iobuf.seek, Iobuf.global) Iobuf.t -> unit t
       | Allocate_string : Bigstring.t -> string t
       | Allocate_bigstring : (Bigstring.t[@globalized]) -> Bigstring.t t
   end
@@ -152,7 +152,7 @@ module Output = struct
         ; len : int
         }
         -> int t
-    | In_iobuf : { iobuf : (read_write, Iobuf.seek) Iobuf.t } -> unit t
+    | In_iobuf : { iobuf : (read_write, Iobuf.seek, Iobuf.global) Iobuf.t } -> unit t
     | Allocate_string : { size_limit : int option } -> string t
     | Allocate_bigstring : { size_limit : int option } -> Bigstring.t t
 
@@ -239,7 +239,7 @@ module Output = struct
 end
 
 module Input = struct
-  type t = (read, Iobuf.no_seek) Iobuf.t
+  type t = (read, Iobuf.no_seek, Iobuf.global) Iobuf.t
 
   [%%template
   [@@@alloc.default a @ m = (heap @ global, stack @ local)]
