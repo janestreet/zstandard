@@ -73,7 +73,7 @@ module Output : sig
 
   (** Passing [in_buffer iobuf] to Zstd functions will cause them to output their result
       in the iobuf. *)
-  val in_iobuf : (read_write, Iobuf.seek) Iobuf.t @ m -> unit t @ m
+  val in_iobuf : (read_write, Iobuf.seek, Iobuf.global) Iobuf.t @ m -> unit t @ m
 
   (** Passing [allocate_string] to Zstd functions will cause them to allocate an ocaml
       string to contain their result. *)
@@ -109,7 +109,7 @@ module Input : sig
 
   (** [from_iobuf iobuf] will pass the content of [iobuf] to Zstd functions. This does not
       incur a copy. *)
-  val from_iobuf : ([> read ], _) Iobuf.t @ m -> t @ m]
+  val from_iobuf : ([> read ], _, Iobuf.global) Iobuf.t @ m -> t @ m]
 end
 
 (** Returns the decompressed size of a message. Since decompressed size is an optional
