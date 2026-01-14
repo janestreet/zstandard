@@ -55,13 +55,13 @@ let compression_output_size_bound input_size =
    [t.ptr] out of the record).
 
    [t.freed] avoids this problem: we test it, and then immediately set it, without
-   performing any operation that could give up the OCaml runtime lock in between. 
+   performing any operation that could give up the OCaml runtime lock in between.
 
    We must also be careful to place calls to [Gc.keep_alive] in the right places so that
-   the finalizer does not run while [Compression_context] is being used but we only have
-   a reference to the [Raw.Context.Compression.t] and not the [Compression_context.t].
-   This is why [Compression_context.with_exn] has a call to [Gc.keep_alive] at the
-   bottom: otherwise [free] might be run while [f] is running.
+   the finalizer does not run while [Compression_context] is being used but we only have a
+   reference to the [Raw.Context.Compression.t] and not the [Compression_context.t]. This
+   is why [Compression_context.with_exn] has a call to [Gc.keep_alive] at the bottom:
+   otherwise [free] might be run while [f] is running.
 
    This is true of all the other similar wrappers like [Decompression_context.t],
    [Streaming.Compression.t], and so on. *)
@@ -442,8 +442,8 @@ module Streaming = struct
     ;;
 
     (* Despite returning size_t, these recommended buffer length functions return are
-       small constants (< 1e6) that have upper bounds embedded in the protocol, so we
-       can depend on these conversions not truncating *)
+       small constants (< 1e6) that have upper bounds embedded in the protocol, so we can
+       depend on these conversions not truncating *)
     let recommended_inbuf_length () =
       Raw.Streaming.Compression.inbuf_size_hint () |> Unsigned.Size_t.to_int
     ;;
