@@ -16,9 +16,12 @@ depends: [
   "core_kernel"
   "ppx_jane"
   "conf-zstd"
-  "ctypes"      {= "0.23.0+ox"}
+  "ctypes"      {>= "0.18.0"}
   "dune"        {>= "3.17.0"}
   "integers"
+]
+conflicts: [
+  "oxcaml-compiler" {< "5.2.0minus39"}
 ]
 synopsis: "OCaml bindings to Zstandard"
 description: "
