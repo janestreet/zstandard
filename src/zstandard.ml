@@ -27,7 +27,7 @@ let get_frame_content_size =
   let content_size_error = Unsigned.ULLong.(sub zero (of_int 2)) in
   fun ptr length ->
     (* This is the magic number ZSTD_FRAMEHEADERSIZE_MAX *)
-    let length = Int.max length 18 |> Unsigned.Size_t.of_int in
+    let length = Int.min length 18 |> Unsigned.Size_t.of_int in
     let ull = Raw.getFrameContentSize ptr length in
     if Unsigned.ULLong.compare ull content_size_unknown = 0
     then raise Content_size_unknown
